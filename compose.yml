@@ -1,0 +1,28 @@
+version: '3'
+services:
+  node-api:
+    build:
+      context: ./my-node-api
+    container_name: node-api
+    ports:
+      - '3000:3000'
+    networks:
+      - my-network
+    # development-purposes
+    volumes:
+      - ./my-node-api:/usr/src/app
+
+  angular-app:
+    build:
+      context: ./my-angular-app
+    container_name: angular-app
+    ports:
+      - '80:80'
+    networks:
+      - my-network
+    depends_on:
+      - node-api
+
+networks:
+  my-network:
+    driver: bridge
