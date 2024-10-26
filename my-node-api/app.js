@@ -5,11 +5,11 @@ const port = 3000;
 const cors = require('cors');
 app.use(cors());
 
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
   res.send('api-home');
 });
 
-app.get('/hello', (req, res) => {
+app.get('/api/hello', (req, res) => {
   res.send('hello-world-there');
 });
 

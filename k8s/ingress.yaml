@@ -1,3 +1,36 @@
+# # ingress.yaml
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: angular-api-ingress
+#   namespace: proxy-test-ns
+#   annotations:
+#     linkerd.io/inject: enabled  # Enable Linkerd injection for Ingress
+#     nginx.ingress.kubernetes.io/rewrite-target: /$2  # Capture everything after /api/
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   # Go to Azure and get/create FQDN in Public IP and put value here (proxytestangular.eastus.cloudapp.azure.com)
+#   - host: proxytestangular.eastus.cloudapp.azure.com
+#     http:
+#       paths:
+#       # Route for Angular app: match anything after /
+#       - path: / # Match the root path (/) and everything after it
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: angular-app-service
+#             port:
+#               number: 80
+#       # Route for Node.js API service: match /api and everything after it
+#       - path: /api(/|$)(.*)  # Match /api and everything after it
+#         pathType: ImplementationSpecific
+#         backend:
+#           service:
+#             name: node-api-service
+#             port:
+#               number: 3000
+
 # ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -6,7 +39,6 @@ metadata:
   namespace: proxy-test-ns
   annotations:
     linkerd.io/inject: enabled  # Enable Linkerd injection for Ingress
-    nginx.ingress.kubernetes.io/rewrite-target: /$2  # Capture everything after /api/
 spec:
   ingressClassName: nginx
   rules:
@@ -21,8 +53,8 @@ spec:
             name: angular-app-service
             port:
               number: 80
-      - path: /api(/|$)(.*)  # Match /api and everything after it
-        pathType: ImplementationSpecific
+      - path: /api
+        pathType: Prefix
         backend:
           service:
             name: node-api-service

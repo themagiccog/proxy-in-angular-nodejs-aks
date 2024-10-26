@@ -8,7 +8,7 @@ import { Observable } from 'rxjs';
 export class HelloService {
 
   //private apiUrl = 'http://localhost:3000/hello'; // URL Path when deploying local
-  private apiUrl = '/api'; // URL Path when using nginx proxy (container)
+  private apiUrl = '/api/hello'; // URL Path when using nginx proxy (container)
 
   constructor(private http: HttpClient) { }
 
