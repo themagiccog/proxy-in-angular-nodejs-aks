@@ -787,3 +787,620 @@ kubectl apply -f hpa.yaml
 - **Scaling**: You can use `HorizontalPodAutoscaler` for scaling your services dynamically.
 
 This setup will give you a robust way to deploy and manage your Angular app and Node.js API in Kubernetes.
+
+---
+
+### Add Linkerd
+
+To deploy your Angular app and Node.js API in a Kubernetes namespace called `proxy-test-ns` and set up Linkerd for that namespace, follow these steps:
+
+### 1. Make sure `proxy-test-ns` Namespace is created
+
+First, create the `proxy-test-ns` namespace in Kubernetes where both the Angular app and Node.js API will be deployed.
+
+```bash
+# check
+kubectl get ns
+# create if not created
+kubectl create namespace proxy-test-ns
+```
+
+### 2. Install Linkerd in the Cluster
+
+#### 2.1. Install Linkerd CLI
+You can install Linkerd using the official CLI. If you don't have the Linkerd CLI installed yet, do so by running:
+
+Install:
+```bash
+curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install | sh
+```
+
+Add the linkerd CLI to your path with:
+```bash
+export PATH=$PATH:/home/gbugu/.linkerd2/bin
+```
+
+#### 2.2. Install Linkerd CRD and Control Plane
+Install the Linkerd crd in your cluster:
+
+```bash
+
+  linkerd check --pre                     # validate that Linkerd can be installed
+  linkerd install --crds | kubectl apply -f - # install the Linkerd CRDs
+  linkerd install | kubectl apply -f -    # install the control plane into the 'linkerd' namespace
+  linkerd check                           # validate everything worked!
+```
+You can also obtain observability features by installing the viz extension:
+```bash
+  linkerd viz install | kubectl apply -f -  # install the viz extension into the 'linkerd-viz' namespace
+  linkerd viz check                         # validate the extension works!
+  linkerd viz dashboard                     # launch the dashboard
+```
+
+### 3. Inject Linkerd into the `proxy-test-ns` Namespace
+
+Once Linkerd is installed, you can "inject" Linkerd into your namespace and workloads. Injecting Linkerd automatically adds sidecar proxies to your deployments, enabling the service mesh functionality.
+
+```bash
+kubectl annotate namespace proxy-test-ns linkerd.io/inject=enabled
+```
+
+Alternatively, you can inject Linkerd manually for each deployment by adding the following:
+
+```yaml
+...
+spec:
+  template:
+    metadata:
+      annotations:
+        linkerd.io/inject: enabled  # Inject Linkerd
+...
+```
+
+Optional: Modify crd for v1beta3.
+```bash
+kubectl get customresourcedefinition.apiextensions.k8s.io/servers.policy.linkerd.io -o yaml > servers-policy-crd.yaml
+
+kubectl apply -f servers-policy-crd.yaml
+
+```
+
+`servers-policy-crd.yaml` is:
+```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    linkerd.io/created-by: linkerd/cli edge-24.8.2
+  name: servers.policy.linkerd.io
+spec:
+  conversion:
+    strategy: None
+  group: policy.linkerd.io
+  names:
+    kind: Server
+    listKind: ServerList
+    plural: servers
+    shortNames:
+    - srv
+    singular: server
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: false
+    deprecated: true
+    deprecationWarning: policy.linkerd.io/v1alpha1 Server is deprecated; use policy.linkerd.io/v1beta1 Server
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            oneOf:
+            - required:
+              - podSelector
+            - required:
+              - externalWorkloadSelector
+            properties:
+              accessPolicy:
+                default: deny
+                description: Default access policy to apply when the traffic doesn't
+                  match any of the policy rules.
+                type: string
+              externalWorkloadSelector:
+                description: |-
+                  Selects ExternalWorkloads in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              podSelector:
+                description: |-
+                  Selects pods in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              port:
+                description: A port name or number. Must exist in a pod spec.
+                x-kubernetes-int-or-string: true
+              proxyProtocol:
+                default: unknown
+                description: |-
+                  Configures protocol discovery for inbound connections.
+                  Supersedes the `config.linkerd.io/opaque-ports` annotation.
+                type: string
+            required:
+            - port
+            type: object
+        required:
+        - spec
+        type: object
+  - name: v1beta1
+    served: true
+    storage: false
+    deprecated: true
+    deprecationWarning: policy.linkerd.io/v1beta1 Server is deprecated; use policy.linkerd.io/v1beta3 Server
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            oneOf:
+            - required:
+              - podSelector
+            - required:
+              - externalWorkloadSelector
+            properties:
+              accessPolicy:
+                default: deny
+                description: Default access policy to apply when the traffic doesn't
+                  match any of the policy rules.
+                type: string
+              externalWorkloadSelector:
+                description: |-
+                  Selects ExternalWorkloads in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              podSelector:
+                description: |-
+                  Selects pods in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              port:
+                description: A port name or number. Must exist in a pod spec.
+                x-kubernetes-int-or-string: true
+              proxyProtocol:
+                default: unknown
+                description: |-
+                  Configures protocol discovery for inbound connections.
+                  Supersedes the `config.linkerd.io/opaque-ports` annotation.
+                type: string
+            required:
+            - port
+            type: object
+        required:
+        - spec
+        type: object
+  - name: v1beta2
+    served: true
+    storage: false
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            oneOf:
+            - required:
+              - podSelector
+            - required:
+              - externalWorkloadSelector
+            properties:
+              accessPolicy:
+                default: deny
+                description: Default access policy to apply when the traffic doesn't
+                  match any of the policy rules.
+                type: string
+              externalWorkloadSelector:
+                description: |-
+                  Selects ExternalWorkloads in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              podSelector:
+                description: |-
+                  Selects pods in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              port:
+                description: A port name or number. Must exist in a pod spec.
+                x-kubernetes-int-or-string: true
+              proxyProtocol:
+                default: unknown
+                description: |-
+                  Configures protocol discovery for inbound connections.
+                  Supersedes the `config.linkerd.io/opaque-ports` annotation.
+                type: string
+            required:
+            - port
+            type: object
+        required:
+        - spec
+        type: object
+  - name: v1beta3
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            oneOf:
+            - required:
+              - podSelector
+            - required:
+              - externalWorkloadSelector
+            properties:
+              accessPolicy:
+                default: deny
+                description: Default access policy to apply when the traffic doesn't
+                  match any of the policy rules.
+                type: string
+              externalWorkloadSelector:
+                description: |-
+                  Selects ExternalWorkloads in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              podSelector:
+                description: |-
+                  Selects pods in the same namespace.
+                  The result of matchLabels and matchExpressions are ANDed. Selects all if empty.
+                properties:
+                  matchExpressions:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        operator:
+                          enum:
+                          - In
+                          - NotIn
+                          - Exists
+                          - DoesNotExist
+                          type: string
+                        values:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              port:
+                description: A port name or number. Must exist in a pod spec.
+                x-kubernetes-int-or-string: true
+              proxyProtocol:
+                default: unknown
+                description: |-
+                  Configures protocol discovery for inbound connections.
+                  Supersedes the `config.linkerd.io/opaque-ports` annotation.
+                type: string
+            required:
+            - port
+            type: object
+        required:
+        - spec
+        type: object
+status:
+  acceptedNames:
+    kind: Server
+    listKind: ServerList
+    plural: servers
+    shortNames:
+    - srv
+    singular: server
+  conditions:
+  - lastTransitionTime: "2024-10-24T17:25:58Z"
+    message: no conflicts found
+    reason: NoConflicts
+    status: "True"
+    type: NamesAccepted
+  - lastTransitionTime: "2024-10-24T17:25:58Z"
+    message: the initial names have been accepted
+    reason: InitialNamesAccepted
+    status: "True"
+    type: Established
+  storedVersions:
+  - v1beta3
+
+```
+
+### 4. Deploy Modified Resources to the `proxy-test-ns` Namespace
+
+Now apply your modified YAML files to deploy the Angular app and Node.js API into the `proxy-test-ns` namespace:
+
+```bash
+kubectl apply -f node-api-deployment.yaml
+kubectl apply -f angular-app-deployment.yaml
+kubectl apply -f ingress.yaml #Optional
+```
+
+### 5. Verify Linkerd Setup
+
+Once your applications are running, you can verify that Linkerd is managing your services by running:
+
+```bash
+linkerd check --proxy-test-ns
+```
+
+You can also visualize the Linkerd dashboard:
+
+```bash
+linkerd dashboard
+```
+
+This will open up a web-based dashboard where you can monitor your services, see metrics, and understand the health of your service mesh.
+
+
+To inject **Linkerd** into a specific Kubernetes namespace, follow these steps. Injecting Linkerd into a namespace means that all pods deployed in that namespace will automatically have the Linkerd sidecar proxy injected.
+
+### Option 1: Automatic Injection (Namespace-Wide)
+
+You can annotate a namespace with `linkerd.io/inject=enabled`, which will automatically inject the Linkerd sidecar proxy into all pods created within that namespace.
+
+#### Steps for Automatic Namespace Injection:
+
+1. **Annotate the Namespace**:
+   
+   Annotate your desired namespace with `linkerd.io/inject=enabled` to enable automatic injection for all pods:
+
+   ```bash
+   kubectl annotate namespace <your-namespace> linkerd.io/inject=enabled
+   ```
+
+   Replace `<your-namespace>` with the name of your namespace. For example:
+
+   ```bash
+   kubectl annotate namespace my-namespace linkerd.io/inject=enabled
+   ```
+
+2. **Deploy Pods**:
+
+   Any new pods created in this namespace will automatically have the Linkerd sidecar proxy injected.
+
+3. **Verify Injection**:
+
+   After deploying the pods, you can verify if the Linkerd proxy is injected by checking the pods in the namespace:
+
+   ```bash
+   kubectl get pods -n <your-namespace> -o jsonpath="{.items[*].spec.containers[*].name}"
+   ```
+
+   This command will list all containers in the pods, and you should see `linkerd-proxy` listed as one of the containers.
+
+### Option 2: Manual Injection (Per Pod or Deployment)
+
+If you don't want to annotate the entire namespace and prefer to inject Linkerd only into specific pods or deployments, you can manually inject Linkerd using the `linkerd inject` command.
+
+#### Steps for Manual Injection:
+
+1. **Get the Deployment YAML**:
+
+   Export the YAML of the deployment or pod that you want to inject with Linkerd:
+
+   ```bash
+   kubectl get deployment <deployment-name> -n <your-namespace> -o yaml > deployment.yaml
+   ```
+
+2. **Inject Linkerd Proxy**:
+
+   Inject the Linkerd sidecar proxy into the deployment YAML file:
+
+   ```bash
+   linkerd inject deployment.yaml | kubectl apply -f -
+   ```
+
+   This will add the necessary Linkerd annotations to the deployment and apply it back to the cluster.
+
+3. **Verify Injection**:
+
+   Check that the Linkerd proxy has been injected by listing the containers in the pod:
+
+   ```bash
+   kubectl get pods -n <your-namespace> -o jsonpath="{.items[*].spec.containers[*].name}"
+   ```
+
+   You should see `linkerd-proxy` listed as one of the containers.
+
+### Option 3: Injecting Linkerd on Pod Creation (kubectl run)
+
+If you're using `kubectl run` to create a pod, you can inject Linkerd by piping the output to the `linkerd inject` command:
+
+```bash
+kubectl run <pod-name> --image=<image-name> --dry-run=client -o yaml | linkerd inject - | kubectl apply -f -
+```
+
+### Summary of Options
+
+1. **Automatic Injection** (Namespace-Wide):
+   - Annotate the namespace with `linkerd.io/inject=enabled`.
+   - All new pods in the namespace will be automatically injected with the Linkerd proxy.
+
+2. **Manual Injection** (Per Pod or Deployment):
+   - Manually inject specific deployments by exporting their YAML, injecting Linkerd, and applying the updated YAML.
+
+3. **Inject on Creation**:
+   - Use `kubectl run` with `linkerd inject` to create a pod with Linkerd injected from the start.
+
+Let me know if you need more help with Linkerd injection!
